@@ -166,6 +166,14 @@ async function updateThemeUI() {
   });
 }
 
+// Refresh button
+document.querySelector('.refresh-btn')?.addEventListener('click', async () => {
+  const btn = document.querySelector('.refresh-btn');
+  btn.classList.add('spinning');
+  await loadEmails();
+  btn.classList.remove('spinning');
+});
+
 // Settings dropdown
 const settingsBtn = document.querySelector('.settings-btn');
 const settingsDropdown = document.getElementById('settingsDropdown');
@@ -177,7 +185,6 @@ settingsBtn?.addEventListener('click', (e) => {
   if (isOpening) {
     const rect = settingsBtn.getBoundingClientRect();
     const ddWidth = 240;
-    // Ensure dropdown stays within popup bounds (360px)
     let left = rect.right - ddWidth + 6;
     if (left < 8) left = 8;
     if (left + ddWidth > window.innerWidth - 8) left = window.innerWidth - ddWidth - 8;
@@ -203,7 +210,6 @@ document.querySelectorAll('.segment-btn').forEach(btn => {
     const theme = btn.dataset.theme;
     const row = btn.closest('.segmented-row');
 
-    // Update UI immediately
     row.querySelectorAll('.segment-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
 
