@@ -11,11 +11,10 @@ Temporary email addresses that appear when you need.
 
 ## Install in Firefox
 
-1. Download or clone this repository.
-2. run this command `zip -r ../tempbox.xpi *`.
-3. Open Firefox and go to `about:config`.
-4. Search for `xpinstall.signatures.required` and make it false.
-5. Go to `about:addons`.
-6. click on `Settings` and select `Install from File`
-7. Select the `tempbox.xpi` file.
-8. The extension icon appears in the toolbar.
+1. Download `tempbox.xpi`
+2. Open Firefox and go to `about:config`.
+3. Search for `xpinstall.signatures.required` and change it to false.
+4. Go to `about:addons`.
+5. click on `Settings` and select `Install from File`
+6. Select the `tempbox.xpi` file.
+7. Done.
