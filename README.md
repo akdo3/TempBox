@@ -1,6 +1,6 @@
 # TempBox
 
-Temporary email addresses that appear when you need.
+Temporary email addresses that appear when you need them.
 
 ## What it does
 
