@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="header">
+    <div class="header-top">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+        TempBox
+      </div>
+      <div class="header-actions">
+        <div class="info-wrap">
+          <button class="btn-icon info-btn" aria-label="How it works">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          </button>
+          <div class="info-tooltip">Inboxes refresh automatically.<br>Emails are temporary and deleted when you remove the inbox.</div>
+        </div>
+        <button class="btn-new" id="btnNew"><span>+ New</span></button>
+      </div>
+    </div>
+  </div>
+  <div class="header-divider"></div>
+
+  <div class="error-bar" id="errorBar">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
+    <span id="errorText"></span>
+  </div>
+
+  <div class="email-list" id="emailList"></div>
+
+  <div class="empty-state" id="emptyState">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+    <h3>No temporary inboxes</h3>
+    <p>Click "New" to create a disposable email address. It will appear here and inside website forms.</p>
+  </div>
+
+  <div class="toast" id="toast">Copied</div>
+  <script src="popup.js"></script>
+</body>
+</html>
