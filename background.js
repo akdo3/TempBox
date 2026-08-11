@@ -40,7 +40,7 @@ async function fetchMessages(token) {
 
 function extractOTP(text) {
   if (!text) return null;
-  const t = text.replace(/[\u200B-\u200D\uFEFF]/g, '');
+  const t = text.replace(/[​-‍﻿]/g, '');
 
   const patterns = [
     /(?:code|otp|pin|token|verification|verify|password|passcode|security|auth|authentication|confirm|confirmation|one-time|single-use|2fa|mfa)[\s:]*([0-9]{4,8})/i,
@@ -100,6 +100,7 @@ async function checkMessages() {
   const newEmails = [];
   const newLastMsgIds = { ...lastMsgIds };
   const newOtpSessions = { ...otpSessions };
+  let sessionsCleaned = false;
 
   for (const email of emails) {
     try {
@@ -122,11 +123,21 @@ async function checkMessages() {
           if (code) {
             const session = newOtpSessions[email.address];
             if (session && (Date.now() - session.time < 10 * 60 * 1000)) {
-              browser.tabs.sendMessage(session.tabId, {
-                action: 'otp',
-                code,
-                email: email.address
-              }).catch(() => {});
+              try {
+                // Security: verify tab still exists before sending sensitive OTP
+                const tab = await browser.tabs.get(session.tabId);
+                if (tab && tab.url) {
+                  await browser.tabs.sendMessage(session.tabId, {
+                    action: 'otp',
+                    code,
+                    email: email.address
+                  });
+                }
+              } catch (e) {
+                // Tab closed or navigated away — clean up stale session
+                delete newOtpSessions[email.address];
+                sessionsCleaned = true;
+              }
             }
           }
         }
@@ -147,14 +158,13 @@ async function checkMessages() {
 
   // Clean expired OTP sessions (older than 10 minutes)
   const now = Date.now();
-  let cleaned = false;
   for (const [email, session] of Object.entries(newOtpSessions)) {
     if (now - session.time > 10 * 60 * 1000) {
       delete newOtpSessions[email];
-      cleaned = true;
+      sessionsCleaned = true;
     }
   }
-  if (cleaned) {
+  if (sessionsCleaned) {
     await browser.storage.local.set({ otpSessions: newOtpSessions });
   }
 }
@@ -175,9 +185,18 @@ browser.runtime.onMessage.addListener((req, sender, sendResponse) => {
         return { ok: true, emails };
       }
       case 'delete': {
-        const { emails = [] } = await browser.storage.local.get('emails');
+        // Privacy: also wipe message IDs and OTP sessions tied to this email
+        const { emails = [], lastMsgIds = {}, otpSessions = {} } = await browser.storage.local.get(['emails', 'lastMsgIds', 'otpSessions']);
+        const emailToDelete = emails.find(e => e.id === req.id);
         const filtered = emails.filter(e => e.id !== req.id);
-        await browser.storage.local.set({ emails: filtered });
+
+        if (emailToDelete) {
+          delete lastMsgIds[emailToDelete.address];
+          delete otpSessions[emailToDelete.address];
+          await browser.storage.local.set({ emails: filtered, lastMsgIds, otpSessions });
+        } else {
+          await browser.storage.local.set({ emails: filtered });
+        }
         return { ok: true };
       }
       case 'messages': {
@@ -194,6 +213,14 @@ browser.runtime.onMessage.addListener((req, sender, sendResponse) => {
         otpSessions[req.email] = { tabId: sender.tab.id, url: req.url, time: Date.now() };
         await browser.storage.local.set({ otpSessions });
         return { ok: true };
+      }
+      case 'getTabTheme': {
+        try {
+          const res = await browser.tabs.sendMessage(req.tabId, { action: 'getSiteTheme' });
+          return { ok: true, theme: res?.theme || 'light' };
+        } catch (e) {
+          return { ok: false, theme: 'light' };
+        }
       }
       default:
         return { ok: false, error: 'Unknown action' };
