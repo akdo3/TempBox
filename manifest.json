@@ -2,7 +2,7 @@
   "manifest_version": 2,
   "name": "TempBox",
   "version": "1.0.0",
-  "description": "Temporary email addresses that appear when you need",
+  "description": "Temporary email addresses that appear when you need them.",
   "browser_specific_settings": {
     "gecko": {
       "id": "tempbox@addon.local"
