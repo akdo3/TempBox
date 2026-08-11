@@ -33,11 +33,36 @@
     }
   }
 
-  function applyTheme(popover) {
-    const theme = detectSiteTheme();
+  function resolveTheme(themeValue) {
+    if (themeValue === 'auto') return detectSiteTheme();
+    if (themeValue === 'system') return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    return themeValue || 'light';
+  }
+
+  async function applyTheme(popover, forcedValue) {
+    let themeValue = forcedValue;
+    if (!themeValue) {
+      const { sitePopoverTheme = 'auto' } = await browser.storage.local.get('sitePopoverTheme');
+      themeValue = sitePopoverTheme;
+    }
+    const theme = resolveTheme(themeValue);
     popover.classList.remove('tempbox-theme-light', 'tempbox-theme-dark');
     popover.classList.add(`tempbox-theme-${theme}`);
   }
+
+  // ─── Auto theme update without page reload ───
+  browser.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.sitePopoverTheme && activePopover) {
+      applyTheme(activePopover, changes.sitePopoverTheme.newValue);
+    }
+  });
+
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', async () => {
+    const { sitePopoverTheme = 'auto' } = await browser.storage.local.get('sitePopoverTheme');
+    if (sitePopoverTheme === 'system' && activePopover) {
+      applyTheme(activePopover, 'system');
+    }
+  });
 
   function isEmailField(el) {
     const t = (el.type || '').toLowerCase();
@@ -149,50 +174,76 @@
     }, 180000);
   }
 
+  // ─── Security: DOM-based rendering instead of innerHTML for user data ───
   async function renderPopover(popover, input) {
-    applyTheme(popover);
+    await applyTheme(popover);
 
     const res = await browser.runtime.sendMessage({ action: 'list' });
     const emails = res.ok ? res.emails : [];
 
-    let html = `
-      <div class="tempbox-popover-header">
-        <span>TempBox</span>
-        <button class="tempbox-popover-close">&times;</button>
-      </div>
-    `;
+    popover.innerHTML = '';
+
+    const header = document.createElement('div');
+    header.className = 'tempbox-popover-header';
+    header.innerHTML = '<span>TempBox</span>';
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'tempbox-popover-close';
+    closeBtn.textContent = '\u00D7';
+    closeBtn.addEventListener('click', closeAll);
+    header.appendChild(closeBtn);
+    popover.appendChild(header);
 
     if (emails.length) {
       emails.forEach(e => {
-        html += `
-          <div class="tempbox-item" data-addr="${e.address}">
-            <span class="tempbox-item-addr">${e.address}</span>
-            ${e.messageCount ? `<span class="tempbox-item-badge">${e.messageCount}</span>` : ''}
-          </div>
-        `;
+        const item = document.createElement('div');
+        item.className = 'tempbox-item';
+        item.dataset.addr = e.address;
+
+        const addr = document.createElement('span');
+        addr.className = 'tempbox-item-addr';
+        addr.textContent = e.address;
+        item.appendChild(addr);
+
+        if (e.messageCount) {
+          const badge = document.createElement('span');
+          badge.className = 'tempbox-item-badge';
+          badge.textContent = e.messageCount;
+          item.appendChild(badge);
+        }
+
+        item.addEventListener('click', () => fillInput(input, e.address));
+        popover.appendChild(item);
       });
     } else {
-      html += `<div class="tempbox-empty">No inboxes yet</div>`;
+      const empty = document.createElement('div');
+      empty.className = 'tempbox-empty';
+      empty.textContent = 'No inboxes yet';
+      popover.appendChild(empty);
     }
 
-    html += `<button class="tempbox-create">+ Create new inbox</button>`;
-    popover.innerHTML = html;
+    const createBtn = document.createElement('button');
+    createBtn.className = 'tempbox-create';
+    createBtn.textContent = '+ Create new inbox';
+    createBtn.addEventListener('click', async () => {
+      const loading = document.createElement('div');
+      loading.className = 'tempbox-loading';
+      loading.textContent = 'Creating...';
+      popover.innerHTML = '';
+      popover.appendChild(loading);
 
-    popover.querySelector('.tempbox-popover-close').addEventListener('click', closeAll);
-
-    popover.querySelectorAll('.tempbox-item').forEach(item => {
-      item.addEventListener('click', () => fillInput(input, item.dataset.addr));
-    });
-
-    popover.querySelector('.tempbox-create').addEventListener('click', async () => {
-      popover.innerHTML = '<div class="tempbox-loading">Creating...</div>';
       const gen = await browser.runtime.sendMessage({ action: 'generate' });
       if (gen.ok) {
         fillInput(input, gen.email.address);
       } else {
-        popover.innerHTML = `<div class="tempbox-empty" style="color:#ff3b30;">${gen.error}</div>`;
+        const errDiv = document.createElement('div');
+        errDiv.className = 'tempbox-empty';
+        errDiv.style.color = '#ff3b30';
+        errDiv.textContent = gen.error || 'Failed to create inbox';
+        popover.innerHTML = '';
+        popover.appendChild(errDiv);
       }
     });
+    popover.appendChild(createBtn);
   }
 
   function attach(input) {
@@ -223,9 +274,15 @@
     popover.className = 'tempbox-popover';
     document.body.appendChild(popover);
 
+    // Prevent focus/active state sticking on double-click
+    btn.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+    });
+
     btn.addEventListener('click', async (e) => {
       e.preventDefault();
       e.stopPropagation();
+      btn.blur();
 
       if (activePopover === popover) {
         closeAll();
@@ -279,6 +336,9 @@
     });
   }
 
+  // Cleanup observer on page unload to prevent memory leaks
+  window.addEventListener('beforeunload', () => observer.disconnect());
+
   document.addEventListener('click', (e) => {
     if (activePopover && !activePopover.contains(e.target) && !e.target.closest('.tempbox-trigger')) {
       closeAll();
@@ -289,7 +349,12 @@
     if (e.key === 'Escape') closeAll();
   });
 
-  browser.runtime.onMessage.addListener((req) => {
+  browser.runtime.onMessage.addListener((req, sender, sendResponse) => {
+    if (req.action === 'getSiteTheme') {
+      const theme = detectSiteTheme();
+      sendResponse({ theme });
+      return true;
+    }
     if (req.action === 'otp') {
       const inputs = findOTPInputs();
       if (inputs.length) {
@@ -304,5 +369,7 @@
         });
       }
     }
+    // Always return true for async responses, false for sync
+    return false;
   });
 })();
