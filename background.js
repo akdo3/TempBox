@@ -1,11 +1,17 @@
 const API = 'https://api.mail.tm';
+let isRateLimited = false;
 
 async function api(path, opts = {}) {
   const res = await fetch(`${API}${path}`, {
     ...opts,
     headers: { 'Content-Type': 'application/json', ...opts.headers }
   });
-  if (res.status === 429) throw new Error('Rate limited. Please wait a moment.');
+  if (res.status === 429) {
+    isRateLimited = true;
+    browser.alarms.clear('checkMail');
+    browser.alarms.create('rateLimitBackoff', { delayInMinutes: 0.5 });
+    throw new Error('Rate limited. Please wait a moment.');
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || 'Request failed');
@@ -53,7 +59,7 @@ function extractOTP(text) {
     if (m) return m[1];
   }
 
-  const lines = t.split(/\n|<br\s*\/?>/i);
+  const lines = t.split(/|<br\s*\/?>/i);
   for (const line of lines) {
     const trimmed = line.trim();
     if (trimmed.length >= 4 && trimmed.length <= 30) {
@@ -81,7 +87,6 @@ async function generateEmail() {
   await createAccount(address, password);
   const { token } = await getToken(address, password);
 
-  // Password intentionally omitted — token is sufficient and reduces exposure
   return {
     id: crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`,
     address,
@@ -93,6 +98,8 @@ async function generateEmail() {
 }
 
 async function checkMessages() {
+  if (isRateLimited) return;
+
   const { emails = [] } = await browser.storage.local.get('emails');
   const { otpSessions = {}, lastMsgIds = {} } = await browser.storage.local.get(['otpSessions', 'lastMsgIds']);
 
@@ -113,7 +120,6 @@ async function checkMessages() {
         updated = true;
         newMsgs.forEach(m => seen.add(m.id));
 
-        // Cap stored IDs to prevent unbounded growth
         const seenArr = Array.from(seen);
         if (seenArr.length > 200) seenArr.splice(0, seenArr.length - 200);
         newLastMsgIds[email.address] = seenArr;
@@ -124,7 +130,6 @@ async function checkMessages() {
             const session = newOtpSessions[email.address];
             if (session && (Date.now() - session.time < 10 * 60 * 1000)) {
               try {
-                // Security: verify tab still exists before sending sensitive OTP
                 const tab = await browser.tabs.get(session.tabId);
                 if (tab && tab.url) {
                   await browser.tabs.sendMessage(session.tabId, {
@@ -134,7 +139,6 @@ async function checkMessages() {
                   });
                 }
               } catch (e) {
-                // Tab closed or navigated away — clean up stale session
                 delete newOtpSessions[email.address];
                 sessionsCleaned = true;
               }
@@ -156,7 +160,6 @@ async function checkMessages() {
     browser.browserAction.setBadgeBackgroundColor({ color: '#ff3b30' });
   }
 
-  // Clean expired OTP sessions (older than 10 minutes)
   const now = Date.now();
   for (const [email, session] of Object.entries(newOtpSessions)) {
     if (now - session.time > 10 * 60 * 1000) {
@@ -175,7 +178,7 @@ browser.runtime.onMessage.addListener((req, sender, sendResponse) => {
       case 'generate': {
         const email = await generateEmail();
         const { emails = [] } = await browser.storage.local.get('emails');
-        if (emails.length >= 20) emails.pop(); // Max 20 inboxes to prevent bloat
+        if (emails.length >= 20) emails.pop();
         emails.unshift(email);
         await browser.storage.local.set({ emails });
         return { ok: true, email };
@@ -185,7 +188,6 @@ browser.runtime.onMessage.addListener((req, sender, sendResponse) => {
         return { ok: true, emails };
       }
       case 'delete': {
-        // Privacy: also wipe message IDs and OTP sessions tied to this email
         const { emails = [], lastMsgIds = {}, otpSessions = {} } = await browser.storage.local.get(['emails', 'lastMsgIds', 'otpSessions']);
         const emailToDelete = emails.find(e => e.id === req.id);
         const filtered = emails.filter(e => e.id !== req.id);
@@ -231,10 +233,14 @@ browser.runtime.onMessage.addListener((req, sender, sendResponse) => {
   return true;
 });
 
-browser.alarms.create('checkMail', { periodInMinutes: 0.17 });
+browser.alarms.create('checkMail', { periodInMinutes: 0.083 });
 
 browser.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'checkMail') checkMessages();
+  if (alarm.name === 'rateLimitBackoff') {
+    isRateLimited = false;
+    browser.alarms.create('checkMail', { periodInMinutes: 0.083 });
+  }
 });
 
 browser.contextMenus.create({
