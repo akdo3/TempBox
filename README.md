@@ -26,7 +26,6 @@ Temporary email addresses that appear when you need them.
 7. Done.
 
 
-```markdown
 ![Popup light mode](screenshots/popup-light.png)
 ![Popup dark mode](screenshots/popup-dark.png)
 ![Site autofill](screenshots/github-popup-dark.png)
