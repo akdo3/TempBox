@@ -2,6 +2,10 @@
 Temporary email addresses that appear when you need them.
 
 
+![Popup light mode](screenshots/popup-light.png)
+![Popup dark mode](screenshots/popup-dark.png)
+
+
 ## What it does
 - Creates disposable email inboxes instantly via mail.tm.
 - Injects a button into email fields on any website — click to fill with a temp address.
@@ -26,7 +30,5 @@ Temporary email addresses that appear when you need them.
 7. Done.
 
 
-![Popup light mode](screenshots/popup-light.png)
-![Popup dark mode](screenshots/popup-dark.png)
 ![Site autofill](screenshots/github-popup-dark.png)
 ![OTP chip](screenshots/otp-chip.png)
