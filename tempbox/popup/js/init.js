@@ -1,2 +1,0 @@
-initTheme();
-loadEmails();
