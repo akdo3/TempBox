@@ -20,7 +20,7 @@ Temporary email addresses that appear when you need them.
 5. Done.
 
 
-## Install in Firefox
+## Install in Firefox/Zen (Firefox-based browsers)
 1. Download `tempbox.xpi`
 2. Open Firefox and go to `about:config`.
 3. Search for `xpinstall.signatures.required` and change it to false.
