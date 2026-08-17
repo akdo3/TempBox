@@ -17,12 +17,8 @@ window.TempBox = window.TempBox || {};
 
   function startWaitingForOTP(input) {
     waitState = true;
-    const wrap = input.closest('.tempbox-wrap');
-    if (wrap) {
-      const trigger = wrap.querySelector('.tempbox-trigger');
-      if (trigger) trigger.classList.add('waiting');
-    }
-
+    const trigger = TB.Popover.getTrigger ? TB.Popover.getTrigger(input) : null;
+    if (trigger) trigger.classList.add('waiting');
     checkLatestOTP();
     if (otpCheckInterval) clearInterval(otpCheckInterval);
     otpCheckInterval = setInterval(() => {
@@ -33,7 +29,6 @@ window.TempBox = window.TempBox || {};
       }
       checkLatestOTP();
     }, 2000);
-
     setTimeout(() => { stopWaitingForOTP(); }, 300000);
   }
 
@@ -59,14 +54,12 @@ window.TempBox = window.TempBox || {};
         const margin = 8;
         const chipW = chip.offsetWidth;
         const chipH = chip.offsetHeight;
-
         let left = rect.left;
         let top = rect.bottom + margin;
         if (top + chipH > window.innerHeight - 8) top = rect.top - chipH - margin;
         if (left + chipW > window.innerWidth - 8) left = window.innerWidth - chipW - 8;
         if (left < 8) left = 8;
         if (top < 8) top = 8;
-
         chip.style.left = `${left}px`;
         chip.style.top = `${top}px`;
       });
@@ -80,7 +73,6 @@ window.TempBox = window.TempBox || {};
       const rectB = b.getBoundingClientRect();
       return rectA.top - rectB.top || rectA.left - rectB.left;
     });
-
     const limit = Math.min(cleanCode.length, sorted.length);
     for (let i = 0; i < limit; i++) {
       const inp = sorted[i];
@@ -105,28 +97,21 @@ window.TempBox = window.TempBox || {};
 
   function showOTPChip(input, code) {
     stopWaitingForOTP();
-
     if (code === lastShownCode && Date.now() - lastShownTime < 3000) return;
     if (TB.isEmailField(input)) return;
-
     const otpInputs = TB.findOTPInputs();
     const isSplit = otpInputs.length > 1 && otpInputs.some(el => {
       const mx = el.getAttribute('maxlength');
       return mx === '1' || el.maxLength === 1;
     });
-
     const targetInput = isSplit ? otpInputs[0] : input;
-
     if (targetInput.dataset.tempboxOtp === code) return;
     targetInput.dataset.tempboxOtp = code;
-
     const oldChip = document.querySelector(`.tempbox-otp-chip[data-input-id="${targetInput.dataset.tempboxId || ''}"]`);
     if (oldChip) { oldChip.remove(); chipRegistry.delete(oldChip.dataset.otpId); }
-
     if (!targetInput.dataset.tempboxId) {
       targetInput.dataset.tempboxId = Math.random().toString(36).slice(2);
     }
-
     const rect = targetInput.getBoundingClientRect();
     const chip = document.createElement('button');
     chip.type = 'button';
@@ -134,51 +119,40 @@ window.TempBox = window.TempBox || {};
     chip.dataset.inputId = targetInput.dataset.tempboxId;
     chip.dataset.otpId = Math.random().toString(36).slice(2);
     chip.textContent = code;
-
     const isDark = TB.detectSiteTheme() === 'dark';
     if (isDark) chip.classList.add('dark');
-
     const margin = 8;
     const chipW = Math.max(90, code.length * 10 + 40);
     const chipH = 34;
-
     let left = rect.left;
     let top = rect.bottom + margin;
     if (top + chipH > window.innerHeight - 8) top = rect.top - chipH - margin;
     if (left + chipW > window.innerWidth - 8) left = window.innerWidth - chipW - 8;
     if (left < 8) left = 8;
     if (top < 8) top = 8;
-
     chip.style.left = `${left}px`;
     chip.style.top = `${top}px`;
-
     chip.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-
       const otpInputs = TB.findOTPInputs();
       const isSplit = otpInputs.length > 1 && otpInputs.some(el => {
         const mx = el.getAttribute('maxlength');
         return mx === '1' || el.maxLength === 1;
       });
-
       if (isSplit) {
         fillSplitInputs(otpInputs, code);
       } else {
         fillSingleInput(input, code);
       }
-
       chip.remove();
       chipRegistry.delete(chip.dataset.otpId);
       delete targetInput.dataset.tempboxOtp;
     });
-
     document.body.appendChild(chip);
     chipRegistry.set(chip.dataset.otpId, chip);
-
     lastShownCode = code;
     lastShownTime = Date.now();
-
     setTimeout(() => {
       if (chip.parentNode) { chip.remove(); chipRegistry.delete(chip.dataset.otpId); }
       if (targetInput.dataset.tempboxOtp === code) delete targetInput.dataset.tempboxOtp;
@@ -188,18 +162,15 @@ window.TempBox = window.TempBox || {};
   async function checkLatestOTP() {
     const inputs = TB.findOTPInputs();
     if (!inputs.length) return;
-
     const hasExplicitOTP = inputs.some(el =>
       el.autocomplete === 'one-time-code' ||
       el.getAttribute('maxlength') === '1' ||
       el.maxLength === 1
     );
-
     if (!hasExplicitOTP) {
       const pickRes = await browser.runtime.sendMessage({ action: 'pick' });
       if (!pickRes.ok) return;
     }
-
     const res = await browser.runtime.sendMessage({ action: 'getLatestOTP' });
     if (res && res.code) showOTPChip(inputs[0], res.code);
   }
