@@ -7,7 +7,8 @@ window.TempBox = window.TempBox || {};
 
   let activePopover = null;
   let activeInput = null;
-  let popoverPool = null; // Reuse DOM element
+  let popoverPool = null;
+  const triggerRegistry = new Map();
 
   function getPopover() {
     if (!popoverPool) {
@@ -104,6 +105,85 @@ window.TempBox = window.TempBox || {};
     popover.appendChild(createBtn);
   }
 
+  function applyBtnStyles(btn) {
+    let isDark = false;
+    try {
+      if (typeof TB.detectSiteTheme === 'function') {
+        isDark = TB.detectSiteTheme() === 'dark';
+      }
+    } catch (e) {
+      isDark = false;
+    }
+
+    const bg = isDark ? 'rgba(58,58,60,0.95)' : 'rgba(255,255,255,0.95)';
+    const color = isDark ? '#ffffff' : '#1d1d1f';
+    const border = isDark ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(0,0,0,0.1)';
+    const shadow = isDark ? '0 2px 8px rgba(0,0,0,0.4)' : '0 2px 8px rgba(0,0,0,0.15)';
+
+    const s = btn.style;
+    s.setProperty('position', 'fixed', 'important');
+    s.setProperty('z-index', '2147483647', 'important');
+    s.setProperty('pointer-events', 'auto', 'important');
+    s.setProperty('width', '20px', 'important');
+    s.setProperty('height', '20px', 'important');
+    s.setProperty('padding', '0', 'important');
+    s.setProperty('margin', '0', 'important');
+    s.setProperty('border', border, 'important');
+    s.setProperty('background', bg, 'important');
+    s.setProperty('color', color, 'important');
+    s.setProperty('cursor', 'pointer', 'important');
+    s.setProperty('display', 'flex', 'important');
+    s.setProperty('align-items', 'center', 'important');
+    s.setProperty('justify-content', 'center', 'important');
+    s.setProperty('border-radius', '6px', 'important');
+    s.setProperty('box-shadow', shadow, 'important');
+    s.setProperty('backdrop-filter', 'blur(4px)', 'important');
+    s.setProperty('-webkit-backdrop-filter', 'blur(4px)', 'important');
+    s.setProperty('opacity', '1', 'important');
+    s.setProperty('visibility', 'visible', 'important');
+    s.setProperty('overflow', 'hidden', 'important');
+    s.setProperty('min-width', '20px', 'important');
+    s.setProperty('min-height', '20px', 'important');
+    s.setProperty('max-width', '20px', 'important');
+    s.setProperty('max-height', '20px', 'important');
+    s.setProperty('outline', 'none', 'important');
+    s.setProperty('box-sizing', 'border-box', 'important');
+    s.setProperty('transform', 'none', 'important');
+  }
+
+  function positionTrigger(btn, input) {
+    if (!input.isConnected) {
+      cleanupTrigger(input);
+      return false;
+    }
+    const rect = input.getBoundingClientRect();
+    const btnSize = 20;
+    const pad = 6;
+
+    let left = rect.right - btnSize - pad;
+    const centerY = rect.top + rect.height / 2;
+
+    if (left < 0) left = 0;
+
+    btn.style.setProperty('left', Math.round(left) + 'px', 'important');
+    btn.style.setProperty('top', Math.round(centerY) + 'px', 'important');
+    btn.style.setProperty('transform', 'translateY(-50%)', 'important');
+    return true;
+  }
+
+  function cleanupTrigger(input) {
+    const reg = triggerRegistry.get(input);
+    if (!reg) return;
+    if (reg.ro) reg.ro.disconnect();
+    if (reg.io) reg.io.disconnect();
+    if (reg.checkTimer) clearInterval(reg.checkTimer);
+    window.removeEventListener('scroll', reg.onScroll, true);
+    window.removeEventListener('resize', reg.onResize);
+    if (reg.btn && reg.btn.parentNode) reg.btn.remove();
+    triggerRegistry.delete(input);
+    if (input.dataset) delete input.dataset.tempboxAttached;
+  }
+
   function attach(input) {
     if (input.dataset.tempboxAttached) return;
     if (!input.parentNode) return;
@@ -112,24 +192,43 @@ window.TempBox = window.TempBox || {};
     input.dataset.tempboxAttached = '1';
 
     try {
-      const wrap = document.createElement('div');
-      wrap.className = 'tempbox-wrap';
-
-      const computed = window.getComputedStyle(input);
-      const width = computed.width === 'auto' ? '100%' : computed.width;
-      wrap.style.width = width;
-      wrap.style.display = computed.display === 'block' || computed.display === 'flex' ? 'block' : 'inline-block';
-      wrap.style.position = 'relative';
-
-      input.parentNode.insertBefore(wrap, input);
-      wrap.appendChild(input);
-
       const btn = document.createElement('button');
-      btn.className = 'tempbox-trigger';
       btn.type = 'button';
       btn.innerHTML = TB.ICON_SVG;
       btn.title = 'TempBox';
-      wrap.appendChild(btn);
+      btn.className = 'tempbox-trigger';
+
+      applyBtnStyles(btn);
+
+      document.body.appendChild(btn);
+
+      const update = () => positionTrigger(btn, input);
+
+      const ro = new ResizeObserver(update);
+      ro.observe(input);
+
+      const io = new IntersectionObserver((entries) => {
+        const visible = entries[0].isIntersecting;
+        btn.style.setProperty('visibility', visible ? 'visible' : 'hidden', 'important');
+        btn.style.setProperty('opacity', visible ? '1' : '0', 'important');
+        if (visible) update();
+      });
+      io.observe(input);
+
+      const onScroll = update;
+      const onResize = update;
+      window.addEventListener('scroll', onScroll, true);
+      window.addEventListener('resize', onResize);
+
+      const checkTimer = setInterval(() => {
+        if (!input.isConnected) {
+          cleanupTrigger(input);
+        }
+      }, 1000);
+
+      triggerRegistry.set(input, { btn, ro, io, onScroll, onResize, checkTimer });
+
+      update();
 
       btn.addEventListener('mousedown', (e) => { e.preventDefault(); });
 
@@ -149,7 +248,7 @@ window.TempBox = window.TempBox || {};
         activeInput = input;
         await renderPopover(popover, input);
 
-        const rect = wrap.getBoundingClientRect();
+        const rect = input.getBoundingClientRect();
         const popH = 320;
         const popW = 300;
 
@@ -177,6 +276,10 @@ window.TempBox = window.TempBox || {};
     closeAll,
     renderPopover,
     attach,
+    getTrigger: (input) => {
+      const reg = triggerRegistry.get(input);
+      return reg ? reg.btn : null;
+    },
     getActivePopover: () => activePopover,
     getActiveInput: () => activeInput,
     setActivePopover: (p) => { activePopover = p; },
